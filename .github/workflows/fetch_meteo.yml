@@ -1,0 +1,48 @@
+name: fetch-meteo
+
+# Récupère les données météo APDL/IH et publie public/live.json sur gh-pages.
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # toutes les 15 minutes (UTC)
+  workflow_dispatch: {}       # déclenchement manuel depuis l'onglet Actions
+
+# Évite que deux runs se chevauchent
+concurrency:
+  group: fetch-meteo
+  cancel-in-progress: true
+
+permissions:
+  contents: write             # nécessaire pour pousser sur gh-pages
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Récupérer le dernier live.json publié (pour fallback stale)
+        run: |
+          mkdir -p public
+          curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/gh-pages/live.json" \
+            -o public/live.json || echo "Pas de live.json existant (premier run)"
+
+      - name: Fetch + consolidate
+        run: python fetch_meteo.py public/live.json
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "meteo update"
